@@ -1,7 +1,6 @@
-from shapely.geometry import (
-    LinearRing,
-    Polygon,
-)
+from shapely.geometry import LinearRing, Polygon
+from shapely.ops import unary_union
+
 import json
 import pathlib
 import sys
@@ -31,20 +30,34 @@ if __name__ == "__main__":
         "elev_amsl": data[0]["elev_amsl"],
         "rings": [],
     }
-
-    polygon = []
+    print(f"processing {len(data)} files")
     for alt in alts:
-        polygon[alt] = []
+        print(f"processing rings for {alt}")
+        polygons = []
         for i in range(0, len(data)):
-            polygon[alt][i] = Polygon(
-                shell=LinearRing(
-                    [r["points"] for r in data[i]["rings"] if r["alt"] == alt][0]
+            polygons.append(
+                Polygon(
+                    shell=LinearRing(
+                        [r["points"] for r in data[i]["rings"] if r["alt"] == alt][0]
+                    )
                 )
             )
+        to_consider = [0]
         for i in range(1, len(data)):
-            polygon[alt][0].union(polygon[alt][i])
-        points = [[x, y] for x, y in polygon[0].exterior.coords]
-        result["rings"].append([{"points": points, "alt": alt}])
+            combined = False
+            for j in to_consider:
+                if polygons[j].disjoint(polygons[i]):
+                    print(f"{alt}: polgon {i} disjoint {j}")
+                else:
+                    print(f"{alt} combine polygons {i} and {j}")
+                    p = unary_union([polygons[j], polygons[i]])
+                    polygons[j] = p
+                    combined = True
+            if not combined:
+                to_consider.append(i)
+        for i in to_consider:
+            points = [[x, y] for x, y in polygons[i].exterior.coords]
+            result["rings"].append({"points": points, "alt": alt})
 
     with open("combined.json", "w") as out:
         print(json.dumps(result), file=out)
